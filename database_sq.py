@@ -49,7 +49,7 @@ def delete_portfolio(p_name):
 def get_cash(p_name):
     response = supabase.table("portfolios").select("cash").eq("name", p_name).execute()
     if response.data:
-        return response.data[0]['cash']
+        return float(response.data[0]['cash'])
     return 0.0
 
 def update_cash(val, p_name):

@@ -142,7 +142,7 @@ with st.sidebar:
         st.write(f"Current: ${current_cash:,.2f}")
         
         with st.form("cash_form", clear_on_submit=True):
-            new_cash = st.number_input("New Cash Amount", min_value=0.0, step=100.0, value=current_cash)
+            new_cash = st.number_input("New Cash Amount", min_value=0.0, step=100.0, value=float(current_cash))
             if st.form_submit_button("Update Balance"):
                 db.update_cash(new_cash, selected_p)
                 st.success("Cash Updated!")
