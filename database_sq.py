@@ -70,10 +70,17 @@ def store_trade(trade, p_name):
 def get_trade_by_id(trade_id, p_name):
     response = supabase.table("trades").select("data").eq("trade_id", trade_id).eq("portfolio_name", p_name).execute()
     if response.data:
-        hex_data = response.data[0]['data']
-        # Convert hex back to bytes before unpickling
-        # Note: Depending on Supabase driver version, it might return a memoryview or string
-        raw_bytes = bytes.fromhex(hex_data) if isinstance(hex_data, str) else bytes(hex_data)
+        raw_data = response.data[0]['data']
+        
+        # 1. Handle cases where Supabase returns a string with \x prefix
+        if isinstance(raw_data, str):
+            if raw_data.startswith('\\x'):
+                raw_data = raw_data[2:]
+            raw_bytes = bytes.fromhex(raw_data)
+        # 2. Handle cases where it's already bytes/memoryview
+        else:
+            raw_bytes = bytes(raw_data)
+            
         return pickle.loads(raw_bytes)
     return None
 
@@ -81,8 +88,15 @@ def get_trades(p_name):
     response = supabase.table("trades").select("data").eq("portfolio_name", p_name).execute()
     trades_list = []
     for row in response.data:
-        hex_data = row['data']
-        raw_bytes = bytes.fromhex(hex_data) if isinstance(hex_data, str) else bytes(hex_data)
+        raw_data = row['data']
+        
+        if isinstance(raw_data, str):
+            if raw_data.startswith('\\x'):
+                raw_data = raw_data[2:]
+            raw_bytes = bytes.fromhex(raw_data)
+        else:
+            raw_bytes = bytes(raw_data)
+            
         trades_list.append(pickle.loads(raw_bytes))
     return trades_list
 
