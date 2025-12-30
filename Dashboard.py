@@ -153,6 +153,7 @@ with st.sidebar:
     # --- MANUAL REFRESH BUTTON ---
     if st.button("Refresh Market Data", use_container_width=True):
         with st.status("Fetching latest prices...", expanded=True) as status:
+            st.cache_data.clear()
             st.write("Connecting to Finnhub...")
             utils.update_underlyings(selected_p) # Your existing logic
             st.write("Recalculating Monte Carlo simulations...")

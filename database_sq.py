@@ -28,6 +28,7 @@ def init_db():
     """
     pass # Table creation is handled via Supabase Dashboard UI
 
+@st.cache_data(ttl=600)
 def get_portfolios():
     response = supabase.table("portfolios").select("name").execute()
     return [row['name'] for row in response.data]
@@ -40,13 +41,17 @@ def build_portfolio(name):
     # If Supabase has an error attribute (like duplicate primary key)
     if hasattr(response, 'error') and response.error:
         raise ValueError(f"Could not create portfolio: {response.error.message}")
+    
+    st.cache_data.clear()
 
 def delete_portfolio(p_name):
     # Foreign Key Cascade should handle trades if set up in SQL Editor,
     # but we will be explicit to match your old logic.
     supabase.table("trades").delete().eq("portfolio_name", p_name).execute()
     supabase.table("portfolios").delete().eq("name", p_name).execute()
+    st.cache_data.clear()
 
+@st.cache_data(ttl=600)
 def get_cash(p_name):
     response = supabase.table("portfolios").select("cash").eq("name", p_name).execute()
     if response.data:
@@ -55,6 +60,7 @@ def get_cash(p_name):
 
 def update_cash(val, p_name):
     supabase.table("portfolios").update({"cash": float(val)}).eq("name", p_name).execute()
+    st.cache_data.clear()
 
 def store_trade(trade, p_name):
     # 1. Convert object to bytes, then to a clean hex string
@@ -66,6 +72,7 @@ def store_trade(trade, p_name):
         "data": trade_data_hex  # This is now a plain string
     }
     supabase.table("trades").upsert(payload).execute()
+    st.cache_data.clear()
 
 def get_trade_by_id(trade_id, p_name):
     response = supabase.table("trades").select("data").eq("trade_id", trade_id).eq("portfolio_name", p_name).execute()
@@ -82,6 +89,7 @@ def get_trade_by_id(trade_id, p_name):
             print(f"Error unpickling specific trade: {e}")
     return None
 
+@st.cache_data(ttl=600)
 def get_trades(p_name):
     response = supabase.table("trades").select("data").eq("portfolio_name", p_name).execute()
     
@@ -109,6 +117,7 @@ def get_trades(p_name):
 
 def delete_trade(trade_id):
     supabase.table("trades").delete().eq("trade_id", trade_id).execute()
+    st.cache_data.clear()
 
 def get_portfolio_val(p_name):
     cash = get_cash(p_name)
