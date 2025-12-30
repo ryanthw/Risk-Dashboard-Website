@@ -223,7 +223,7 @@ with main_left:
         st.info(f"Highest Pos: {utils.get_highest_pos_percent(selected_p):.2f}%")
         
         st.write("**Performance Multipliers**")
-        er_ann = utils.get_er_ann(selected_p)
+        er_ann = utils.get_er_ann(selected_p) * 100
         er_pct = utils.get_er_percent(ers, selected_p)
         st.success(f"LT Alpha: {er_ann / spy_ret_lt:.2f}x")
         st.success(f"ST Alpha: {er_pct / spy_ret_st:.2f}x")

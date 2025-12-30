@@ -150,11 +150,12 @@ def get_er_ann(p_name) -> float:
         return 0.0
 
     for pos in positions:
-        if pos.trade_type != "shares" and pos.trade_type != "cc":
+        if pos.trade_type not in ["shares", "cc"] and pos.max_loss > 0:
             # Check if pos_len is zero to avoid division by zero
             days = pos.pos_len if pos.pos_len > 0 else 1
-            er_ann = (pos.expected_profit / abs(pos.max_loss)) * (365 / days) * 100
-            w = pos.max_loss / port_val
+            cycle_yield = pos.expected_profit / abs(pos.max_loss)
+            er_ann = ((1 + cycle_yield) ** (365 / days)) - 1
+            w = abs(pos.max_loss) / port_val
             avg_er_ann += w * er_ann
     
     return avg_er_ann

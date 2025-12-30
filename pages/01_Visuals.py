@@ -108,47 +108,46 @@ if trades:
 def render_compounding_chart(trades, port_val):
     st.subheader("10-Year Wealth Forecast")
     
-    if not trades or port_val <= 0:
-        st.info("Add trades and cash to see compounding forecasts.")
+    annual_rate = utils.get_er_ann(selected_p)
+    if annual_rate <= 0 or port_val <= 0:
+        st.info("Add risk-defined trades to generate a forecast.")
         return
 
-    # 1. Calculate weighted average return per "cycle"
-    total_expected_return = sum(t.expected_profit for t in trades if t.trade_type != "shares")
-    avg_dte = sum(t.dte for t in trades if t.trade_type != "shares") / len(trades) if trades else 30
-    
-    # 2. Annualize the return
-    # If a portfolio makes 2% every 30 days, annual return = (1 + 0.02)^(365/30) - 1
-    return_per_cycle = total_expected_return / port_val
-    cycles_per_year = 365 / max(avg_dte, 1)
-    annual_rate = (1 + return_per_cycle) ** cycles_per_year - 1
-    
-    # 3. Generate 20-year projection
     years = np.arange(0, 11)
-    # Compound Interest Formula: A = P(1 + r)^t
+    
+    # 1. Standard Forecast (Target)
     forecast_values = port_val * (1 + annual_rate) ** years
+    
+    # 2. Conservative Forecast (70% of Target Rate)
+    # This accounts for the 'slippage' between math and reality
+    conservative_rate = annual_rate * 0.7
+    cons_values = port_val * (1 + conservative_rate) ** years
     
     df_forecast = pd.DataFrame({
         "Year": years,
-        "Projected Value": forecast_values
+        "Target Projection": forecast_values,
+        "Conservative (70%)": cons_values
     })
 
-    # 4. Create the Chart
+    # 3. Create the Chart
     fig = px.line(
-        df_forecast, x="Year", y="Projected Value",
-        title=f"Projected Growth @ {annual_rate*100:.1f}% Annualized",
-        labels={"Projected Value": "Account Balance ($)"}
+        df_forecast, x="Year", y=["Target Projection", "Conservative (70%)"],
+        title=f"Projected Growth (Target: {annual_rate*100:.1f}%)",
+        labels={"value": "Account Balance ($)", "variable": "Scenario"},
+        color_discrete_map={
+            "Target Projection": "#00CC96", # Green
+            "Conservative (70%)": "#636EFA"  # Blue/Gray
+        }
     )
     
-    # Add a marker for the current value
-    fig.add_scatter(x=[0], y=[port_val], mode="markers", name="Starting Balance", marker=dict(size=12, color="green"))
-    
-    # Format Y-axis as currency
-    fig.update_layout(yaxis_tickformat="$,.0f")
+    # Stylize the conservative line as dashed
+    fig.update_traces(patch={"line": {"dash": "dash"}}, selector={"name": "Conservative (70%)"})
+    fig.update_layout(yaxis_tickformat="$,.0f", hovermode="x unified")
     
     st.plotly_chart(fig, width="stretch")
     
-    # Contextual Summary
-    st.write(f"Based on your current positions, your portfolio is generating an expected **{return_per_cycle*100:.2f}%** per **{avg_dte:.0f} days**.")
+    st.caption(f"Note: Target assumes 100% win rate and full capital reinvestment. "
+               f"Conservative assumes a realization of {conservative_rate*100:.1f}% APR.")
 
 if trades:
     render_compounding_chart(trades, db.get_portfolio_val(selected_p))
