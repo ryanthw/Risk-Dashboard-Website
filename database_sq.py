@@ -23,7 +23,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS trades (
         trade_id TEXT PRIMARY KEY,
         portfolio_name TEXT REFERENCES portfolios(name) ON DELETE CASCADE,
-        data BYTEA
+        data TEXT
     );
     """
     pass # Table creation is handled via Supabase Dashboard UI
@@ -34,11 +34,12 @@ def get_portfolios():
 
 def build_portfolio(name):
     name = name.strip()
-    # Attempt to insert; if it fails due to PK violation, it raises an error
+    # Supabase returns a 'data' and an 'error' property
     response = supabase.table("portfolios").insert({"name": name, "cash": 0.0}).execute()
-    # Check if the insert was successful (Supabase returns data on success)
-    if not response.data:
-        raise ValueError("Portfolio name already exists.")
+    
+    # If Supabase has an error attribute (like duplicate primary key)
+    if hasattr(response, 'error') and response.error:
+        raise ValueError(f"Could not create portfolio: {response.error.message}")
 
 def delete_portfolio(p_name):
     # Foreign Key Cascade should handle trades if set up in SQL Editor,
@@ -53,51 +54,57 @@ def get_cash(p_name):
     return 0.0
 
 def update_cash(val, p_name):
-    supabase.table("portfolios").update({"cash": val}).eq("name", p_name).execute()
+    supabase.table("portfolios").update({"cash": float(val)}).eq("name", p_name).execute()
 
 def store_trade(trade, p_name):
-    # Pickle and convert to hex string for Postgres BYTEA compatibility
+    # 1. Convert object to bytes, then to a clean hex string
     trade_data_hex = pickle.dumps(trade).hex()
     
     payload = {
         "trade_id": trade.trade_id,
         "portfolio_name": p_name,
-        "data": trade_data_hex
+        "data": trade_data_hex  # This is now a plain string
     }
-    # .upsert() handles the "INSERT OR REPLACE" logic
     supabase.table("trades").upsert(payload).execute()
 
 def get_trade_by_id(trade_id, p_name):
     response = supabase.table("trades").select("data").eq("trade_id", trade_id).eq("portfolio_name", p_name).execute()
     if response.data:
-        raw_data = response.data[0]['data']
-        
-        # 1. Handle cases where Supabase returns a string with \x prefix
-        if isinstance(raw_data, str):
-            if raw_data.startswith('\\x'):
-                raw_data = raw_data[2:]
-            raw_bytes = bytes.fromhex(raw_data)
-        # 2. Handle cases where it's already bytes/memoryview
-        else:
-            raw_bytes = bytes(raw_data)
-            
-        return pickle.loads(raw_bytes)
+        hex_data = response.data[0]['data']
+        try:
+            if isinstance(hex_data, str):
+                if hex_data.startswith('\\x'):
+                    hex_data = hex_data[2:]
+                return pickle.loads(bytes.fromhex(hex_data))
+            else:
+                return pickle.loads(bytes(hex_data))
+        except Exception as e:
+            print(f"Error unpickling specific trade: {e}")
     return None
 
 def get_trades(p_name):
     response = supabase.table("trades").select("data").eq("portfolio_name", p_name).execute()
+    
     trades_list = []
     for row in response.data:
-        raw_data = row['data']
+        hex_data = row['data']
         
-        if isinstance(raw_data, str):
-            if raw_data.startswith('\\x'):
-                raw_data = raw_data[2:]
-            raw_bytes = bytes.fromhex(raw_data)
-        else:
-            raw_bytes = bytes(raw_data)
+        try:
+            # Since we changed the column to TEXT, Supabase returns a clean string.
+            # We just need to strip any Postgres prefix if it exists.
+            if isinstance(hex_data, str):
+                if hex_data.startswith('\\x'):
+                    hex_data = hex_data[2:]
+                
+                # Convert hex string back to bytes
+                actual_binary = bytes.fromhex(hex_data)
+                
+                # Unpickle
+                trades_list.append(pickle.loads(actual_binary))
+        except Exception as e:
+            print(f"Error decoding trade row: {e}")
+            continue
             
-        trades_list.append(pickle.loads(raw_bytes))
     return trades_list
 
 def delete_trade(trade_id):
