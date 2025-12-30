@@ -5,6 +5,22 @@ from trade import Trade
 from datetime import datetime
 import time
 
+# --- Auth --- #
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        pwd = st.text_input("Enter Password to Access Dashboard", type="password")
+        if pwd == st.secrets["MASTER_PASSWORD"]:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            if pwd: st.error("Wrong password")
+            st.stop() # Stops the rest of the app from loading
+
+check_password()
+
 # --- Page Config ---
 st.set_page_config(page_title="Options Risk Dashboard", layout="wide")
 
