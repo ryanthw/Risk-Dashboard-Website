@@ -60,7 +60,7 @@ if trades:
 
     # 1. Collect all simulation arrays
     # Assuming each t.pnl_dist is a numpy array of length 100,000
-    all_sims = [np.array(t.pnl_dist) for t in trades]
+    all_sims = [np.array(t.pnl_dist) for t in trades if t.trade_type != "shares"]
 
     if all_sims:
         # 2. Sum the simulations element-wise
@@ -102,6 +102,7 @@ if trades:
         fig.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Break-Even")
 
         st.plotly_chart(fig, width="stretch")
+        st.caption("Note: Stock pnl_distributions are not included due to long time horizon and skew factors. This represents an options-only view.")
     else:
         st.warning("No simulation data found. Try refreshing market data on the Dashboard.")
 
@@ -109,7 +110,7 @@ def render_compounding_chart(trades, port_val):
     st.subheader("10-Year Wealth Forecast")
     
     annual_rate = utils.get_er_ann(selected_p)
-    if annual_rate <= 0 or port_val <= 0:
+    if not annual_rate or port_val <= 0:
         st.info("Add risk-defined trades to generate a forecast.")
         return
 
