@@ -171,15 +171,19 @@ def update_underlyings(p_name):
     positions = database.get_trades(p_name)
 
     # Limit API calls by building dict of tickers, prices
-    tickers = {}
+    tickers_prices = {}
+    tickers_iv = {}
     for pos in positions:
-        if pos.ticker in tickers:
+        if pos.ticker in tickers_prices:
             continue
-        tickers[pos.ticker] = api.get_price(pos.ticker)
+        tickers_prices[pos.ticker] = api.get_price(pos.ticker)
+        if pos.trade_type == "shares":
+            tickers_iv[pos.ticker] = api.get_historical_volatility(pos.ticker)
     
     for pos in positions:
-        if tickers[pos.ticker] > 0:
-            pos.underlying_price = float(f"{tickers[pos.ticker]:.2f}")
-            pos.refresh_pnl()
-            # In database_sq, the update function is called store_trade
-            database.store_trade(pos, p_name)
+        if tickers_prices[pos.ticker] > 0:
+            pos.underlying_price = float(f"{tickers_prices[pos.ticker]:.2f}")
+        if pos.trade_type == "shares":
+            pos.iv = tickers_iv[pos.ticker]
+        pos.refresh_pnl()
+        database.store_trade(pos, p_name)

@@ -24,7 +24,7 @@ class Trade:
         self.premium = premium
         self.expiration = datetime.strptime(expiration, "%Y-%m-%d")
         self.underlying_price = underlying_price if underlying_price else api.get_price(self.ticker)
-        self.iv = iv
+        self.iv = iv if self.trade_type != "shares" else api.get_historical_volatility(self.ticker)
         self.opened = datetime.now()
         self.pnl_dist = self.simulate_payoff(100000, 0.0)
 
@@ -131,7 +131,11 @@ class Trade:
         S0 = self.underlying_price
         K = self.strike
         iv = self.iv
-        T = max(self.dte, 0) / 365.0 
+        T = 0
+        if self.trade_type == "shares":
+            T = 1
+        else:
+            T = max(self.dte, 0) / 365.0 
         qty = self.qty
         premium = self.premium    # credit = +, debit = -
 
