@@ -154,7 +154,7 @@ def get_er_ann(p_name) -> float:
             # Check if pos_len is zero to avoid division by zero
             days = pos.pos_len if pos.pos_len > 0 else 1
             cycle_yield = pos.expected_profit / abs(pos.max_loss)
-            er_ann = ((1 + cycle_yield) ** (365 / days)) - 1
+            er_ann = cycle_yield * (365 / days)
             w = abs(pos.max_loss) / port_val
             avg_er_ann += w * er_ann
     
