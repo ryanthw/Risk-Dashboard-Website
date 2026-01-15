@@ -60,7 +60,7 @@ if trades:
 
     # 1. Collect all simulation arrays
     # Assuming each t.pnl_dist is a numpy array of length 100,000
-    all_sims = [np.array(t.pnl_dist) for t in trades if t.trade_type != "shares"]
+    all_sims = [np.array(t.pnl_dist) for t in trades if t.trade_type not in ["shares", "cc"]]
 
     if all_sims:
         # 2. Sum the simulations element-wise
