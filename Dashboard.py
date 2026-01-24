@@ -184,20 +184,22 @@ with st.sidebar:
 st.header(f"Portfolio: {selected_p}")
 
 # 1. Top Level Metrics (The Big 5)
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3, col4, col5, col6 = st.columns(6)
 port_val = db.get_portfolio_val(selected_p)
 trades = db.get_trades(selected_p)
-ers = [t.expected_profit for t in trades]
+ers = [t.expected_profit for t in trades if t.trade_type != "shares"]
 
 with col1:
     st.metric("Total Value", f"${port_val:,.2f}")
 with col2:
     st.metric("Gross Exposure", f"${utils.get_gross_exposure(selected_p):,.2f}")
 with col3:
-    st.metric("Sortino Ratio", f"{utils.get_sortino_ratio(selected_p):.3f}")
+    st.metric("Net Liquidity", f"{utils.get_net_liquidity(selected_p):.2f}")
 with col4:
-    st.metric("HHI (Conc.)", f"{utils.get_hhi(selected_p):.2f}")
+    st.metric("Sortino Ratio", f"{utils.get_sortino_ratio(selected_p):.3f}")
 with col5:
+    st.metric("HHI (Conc.)", f"{utils.get_hhi(selected_p):.2f}")
+with col6:
     st.metric("Open Trades:", f"{len(trades)}")
 
 st.divider()

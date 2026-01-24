@@ -160,11 +160,26 @@ def get_er_ann(p_name) -> float:
     
     return avg_er_ann
 
+# Util method for net liquidity
+def get_net_liquidity(p_name) -> float:
+    val = database.get_portfolio_val(p_name)
+    cost_to_close = get_cost_to_close_shorts(p_name)
+    return val - cost_to_close
+
+def get_cost_to_close_shorts(p_name) -> float:
+    trades = database.get_trades(p_name)
+    cost = 0.0
+    for trade in trades:
+        if trade.trade_type in ["csp", "cc", "short_call", "short_put"]:
+            price = trade.value - trade.expected_profit
+            cost += price
+    return cost
+
 # Positional Metrics
 def get_percent_risk_position(position: Trade, p_name) -> float:
     max_loss_port = database.get_portfolio_val(p_name)
     max_loss_pos = position.max_loss
-    return (max_loss_pos / max_loss_port) * 100 if max_loss_port > 0 else 0.0
+    return (max_loss_pos / max_loss_port) * 100 if max_loss_port > 0 else 0.
 
 # Update Underlying Price for all Positions
 def update_underlyings(p_name):
