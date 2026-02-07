@@ -141,7 +141,7 @@ def get_er_percent(ers, p_name) -> float:
     return (er / port_val) * 100 if port_val > 0 else 0.0
 
 def get_er_ann(p_name) -> float:
-    # Calculates weighted avg of ERPA across all non-stock and cc positions
+    # Calculates weighted avg of ERPA across all non-stock positions
     avg_er_ann = 0.0
     port_val = database.get_portfolio_val(p_name)
     positions = database.get_trades(p_name)
@@ -150,7 +150,7 @@ def get_er_ann(p_name) -> float:
         return 0.0
 
     for pos in positions:
-        if pos.trade_type not in ["shares", "cc"] and pos.max_loss > 0:
+        if pos.trade_type not in ["shares", "cc"]:
             # Check if pos_len is zero to avoid division by zero
             days = pos.pos_len if pos.pos_len > 0 else 1
             cycle_yield = pos.expected_profit / abs(pos.max_loss)
