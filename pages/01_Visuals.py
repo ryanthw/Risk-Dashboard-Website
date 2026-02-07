@@ -30,12 +30,14 @@ else:
             "Max Gain": t.max_gain,
             "POP": t.pop * 100,
             "Type": t.trade_type,
-            "Exp": t.expiration
+            "Exp": t.expiration,
+            "Risk": abs(t.max_loss), # Ensure risk is a positive value for the pie
+            "Portfolio-Risk(%)": utils.get_percent_risk_position(t, selected_p)
         })
     df = pd.DataFrame(data)
 
-    # Layout for Plots
-    col1, col2 = st.columns(2)
+    # NEW: 3-Column Layout for Top-Level Visuals
+    col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
         st.subheader("Risk-Reward Profile")
@@ -43,17 +45,36 @@ else:
             df, x="Max Loss", y="Max Gain", size="POP", color="Ticker",
             hover_name="Ticker", template="plotly_dark"
         )
-        st.plotly_chart(fig_scatter, width="stretch")
+        st.plotly_chart(fig_scatter, width="content")
 
     with col2:
-        st.subheader("Capital at Risk by Expiration")
-        fig_bar = px.bar(
-            df, x="Exp", y="Max Loss", color="Ticker", 
-            template="plotly_dark", barmode="group"
-        )
-        st.plotly_chart(fig_bar, width="stretch")
+        st.subheader("Options Capital at Risk")
+        
+        # NEW: Filter out 'shares' so the scale only reflects option risk
+        options_only_df = df.query("Type != 'shares'")
+        
+        if not options_only_df.empty:
+            fig_bar = px.bar(
+                options_only_df, x="Exp", y="Risk", color="Ticker", 
+                template="plotly_dark", barmode="group",
+                labels={"Risk": "Max Loss ($)", "Exp": "Expiration Date"}
+            )
+            st.plotly_chart(fig_bar, width="content")
+        else:
+            st.info("No option trades to display.")
 
-trades = db.get_trades(selected_p)
+    with col3:
+        st.subheader("Portfolio Risk Allocation")
+        # Creating the Pie Chart
+        fig_pie = px.pie(
+            df, values="Risk", names="Ticker",
+            hole=0.4, # Makes it a Donut chart (more modern look)
+            template="plotly_dark",
+            color_discrete_sequence=px.colors.sequential.RdBu_r
+        )
+        fig_pie.update_traces(textinfo='percent+label')
+        fig_pie.update_layout(showlegend=False) # Hide legend to save space in small column
+        st.plotly_chart(fig_pie, width="content")
 
 if trades:
     st.subheader("Portfolio Aggregated P&L Distribution")
