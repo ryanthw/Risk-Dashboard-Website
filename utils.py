@@ -162,18 +162,31 @@ def get_er_ann(p_name) -> float:
 
 # Util method for net liquidity
 def get_net_liquidity(p_name) -> float:
-    val = database.get_portfolio_val(p_name)
-    cost_to_close = get_cost_to_close_shorts(p_name)
-    return val - cost_to_close
+    liq = database.get_cash(p_name)
+    positions = database.get_trades(p_name)
+    for pos in positions:
+        if pos.trade_type == "shares":
+            liq += pos.value
+    liq -= get_cost_to_close_shorts(positions)
+    liq += get_long_options_vals(positions)
+    return liq
 
-def get_cost_to_close_shorts(p_name) -> float:
-    trades = database.get_trades(p_name)
+def get_cost_to_close_shorts(trades) -> float:
     cost = 0.0
     for trade in trades:
         if trade.trade_type in ["csp", "cc", "short_call", "short_put"]:
             price = trade.value - trade.expected_profit
             cost += price
     return cost
+
+def get_long_options_vals(trades) -> float:
+    cost = 0.0
+    for trade in trades:
+        if trade.trade_type in ["long_call", "long_put"]:
+            price = trade.value + trade.expected_profit
+            cost += price
+    return cost
+
 
 # Positional Metrics
 def get_percent_risk_position(position: Trade, p_name) -> float:
