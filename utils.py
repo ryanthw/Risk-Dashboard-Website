@@ -212,6 +212,6 @@ def update_underlyings(p_name):
         if tickers_prices[pos.ticker] > 0:
             pos.underlying_price = float(f"{tickers_prices[pos.ticker]:.2f}")
         if pos.trade_type == "shares":
-            pos.iv = tickers_iv[pos.ticker]
+            pos.iv = tickers_iv[pos.ticker] if pos.ticker in tickers_iv else 0.0
         pos.refresh_pnl()
         database.store_trade(pos, p_name)
