@@ -93,7 +93,7 @@ class Trade:
 
         if t == "cc":
             # Because of the way I set CC strikes, should be no loss possible
-            return 0
+            return 0.0
 
         if t == "short_put":
             return (self.strike - self.premium) * 100 * self.qty
