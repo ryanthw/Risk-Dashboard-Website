@@ -174,7 +174,7 @@ def get_net_liquidity(p_name) -> float:
 def get_cost_to_close_shorts(trades) -> float:
     cost = 0.0
     for trade in trades:
-        if trade.trade_type in ["csp", "cc", "short_call", "short_put"]:
+        if trade.trade_type in ["csp", "cc", "short_call", "short_put", "pcs", "ccs"]:
             price = trade.value - trade.expected_profit
             cost += price
     return cost
@@ -182,7 +182,7 @@ def get_cost_to_close_shorts(trades) -> float:
 def get_long_options_vals(trades) -> float:
     cost = 0.0
     for trade in trades:
-        if trade.trade_type in ["long_call", "long_put"]:
+        if trade.trade_type in ["long_call", "long_put", "cds", "pds"]:
             price = trade.value + trade.expected_profit
             cost += price
     return cost

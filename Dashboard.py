@@ -124,31 +124,51 @@ with st.sidebar:
     
     st.divider()
 
-    # Add New Trade Form
+    # --- Updated Sidebar "Add New Trade" logic ---
     with st.expander("Add New Trade"):
-        with st.form("add_trade"):
-            t_type = st.selectbox("Type", ["shares", "csp", "cc", "short_call", "short_put", "long_call", "long_put"])
+        # 1. Move the Type selector OUTSIDE the form to make it reactive
+        t_type = st.selectbox("Type", [
+            "shares", "csp", "cc", "short_call", "short_put", 
+            "long_call", "long_put", "pcs", "ccs", "cds", "pds"
+        ])
+        
+        # 2. Start the form for the remaining inputs
+        with st.form("add_trade_form", clear_on_submit=True):
             ticker = st.text_input("Ticker")
             qty = st.number_input("Quantity", min_value=1, value=1)
-            strike = st.number_input("Strike", value=0.0)
-            prem = st.number_input("Premium", value=0.0)
+            
+            col1, col2 = st.columns(2)
+            strike = col1.number_input("Strike (Short)", value=0.0)
+            
+            # Now this will reactively appear because t_type is outside the form
+            strike_2 = 0.0
+            if t_type in ["pcs", "ccs", "cds", "pds"]:
+                strike_2 = col2.number_input("Strike 2 (Long)", value=0.0)
+            else:
+                col2.write("") # Keep layout clean
+                
+            prem = col1.number_input("Premium", value=0.0)
+            iv = col2.number_input("IV", value=0.20)
             exp_date = st.date_input("Expiration", value=datetime.now())
-            iv = st.number_input("IV (decimal)", value=0.20)
             
             if st.form_submit_button("Save Trade"):
-                new_trade = Trade(
-                    trade_type=t_type,
-                    ticker=ticker,
-                    qty=qty,
-                    strike=strike if strike > 0 else None,
-                    premium=prem,
-                    expiration=exp_date.strftime("%Y-%m-%d"),
-                    underlying_price=None, # Will fetch via API in Trade class
-                    iv=iv
-                )
-                db.store_trade(new_trade, selected_p)
-                st.success(f"Added {ticker}")
-                st.rerun()
+                if t_type in ["pcs", "ccs", "cds", "pds"] and strike == strike_2:
+                    st.error("Strikes must be different for a spread.")
+                else:
+                    new_trade = Trade(
+                        trade_type=t_type,
+                        ticker=ticker,
+                        qty=qty,
+                        strike=strike if strike > 0 else None,
+                        strike_2=strike_2 if strike_2 > 0 else None,
+                        premium=prem,
+                        expiration=exp_date.strftime("%Y-%m-%d"),
+                        underlying_price=None, 
+                        iv=iv
+                    )
+                    db.store_trade(new_trade, selected_p)
+                    st.success(f"Added {ticker}")
+                    st.rerun()
 
     st.divider()
 
@@ -250,24 +270,44 @@ with main_right:
         t_to_edit = db.get_trade_by_id(edit_id, selected_p)
         
         if t_to_edit:
+            # Check if it's a spread to determine if we show the second strike
+            is_spread = t_to_edit.trade_type in ["pcs", "ccs", "cds", "pds"]
+            
             with st.container(border=True):
                 st.write(f"### Update {t_to_edit.ticker}")
                 with st.form("update_trade_form"):
                     col_a, col_b = st.columns(2)
-                    new_iv = col_a.number_input("Implied Vol (decimal)", value=float(t_to_edit.iv))
-                    new_qty = col_b.number_input("Quantity", value=int(t_to_edit.qty), min_value=1)
-                    new_prem = col_a.number_input("Premium", value=float(t_to_edit.premium))
-                    new_strike = col_b.number_input("Strike", value=float(t_to_edit.strike) if t_to_edit.strike else 0.0)
                     
+                    # Column A: General Metrics
+                    new_iv = col_a.number_input("Implied Vol (decimal)", value=float(t_to_edit.iv))
+                    new_prem = col_a.number_input("Premium", value=float(t_to_edit.premium))
+                    
+                    # Column B: Quantitative Metrics
+                    new_qty = col_b.number_input("Quantity", value=int(t_to_edit.qty), min_value=1)
+                    new_strike = col_b.number_input("Strike 1 (Short/Main)", value=float(t_to_edit.strike) if t_to_edit.strike else 0.0)
+                    
+                    # Conditional Strike 2 Input
+                    new_strike_2 = 0.0
+                    if is_spread:
+                        # Safely get strike_2 for older pickled objects
+                        current_s2 = getattr(t_to_edit, 'strike_2', 0.0)
+                        new_strike_2 = col_b.number_input("Strike 2 (Long/Protection)", value=float(current_s2) if current_s2 else 0.0)
+                    
+                    # Button Row
                     c_btn1, c_btn2 = st.columns(2)
+                    
                     if c_btn1.form_submit_button("Save Changes"):
-                        # Update the object
+                        # Update core attributes
                         t_to_edit.iv = new_iv
                         t_to_edit.qty = new_qty
                         t_to_edit.premium = new_prem
                         t_to_edit.strike = new_strike if new_strike > 0 else None
                         
-                        # Refresh P&L math and Save
+                        # Update strike_2 only if it's a spread
+                        if is_spread:
+                            t_to_edit.strike_2 = new_strike_2
+                        
+                        # Refresh Monte Carlo P&L math and Save to Supabase
                         t_to_edit.refresh_pnl()
                         db.store_trade(t_to_edit, selected_p)
                         

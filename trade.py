@@ -11,6 +11,7 @@ class Trade:
         ticker: str,
         qty: int,
         strike: float | None,
+        strike_2: float | None,
         premium: float | None,      # credit (positive) or debit (negative)
         expiration: datetime,
         underlying_price: float | None,
@@ -21,6 +22,7 @@ class Trade:
         self.ticker = ticker.upper()
         self.qty = qty
         self.strike = strike
+        self.strike_2 = strike_2
         self.premium = premium
         self.expiration = datetime.strptime(expiration, "%Y-%m-%d")
         self.underlying_price = underlying_price if underlying_price else api.get_price(self.ticker)
@@ -72,12 +74,25 @@ class Trade:
 
         if t == "short_call":
             return self.premium * 100 * self.qty
+        
+        # Spreads
+        if t == "ccs":
+            return self.premium * 100 * self.qty
+
+        if t == "pcs":
+            return self.premium * 100 * self.qty
+
+        if t == "cds":
+            return (abs(self.strike_2 - self.strike) - abs(self.premium)) * 100 * self.qty
+
+        if t == "pds":
+            return (abs(self.strike_2 - self.strike) - abs(self.premium)) * 100 * self.qty
 
         # long options
         if t == "long_call":
             return float(self.premium * 4)
         if t == "long_put":
-            return (self.strike * 100 * self.qty)
+            return (self.strike - abs(self.premium)) * 100 * self.qty
 
         return 0
 
@@ -107,6 +122,19 @@ class Trade:
 
         if t == "long_put":
             return self.premium * 100 * self.qty
+        
+        # Spreads
+        if t == "ccs":
+            return (abs(self.strike_2 - self.strike) - abs(self.premium)) * 100 * self.qty
+
+        if t == "pcs":
+            return (abs(self.strike_2 - self.strike) - abs(self.premium)) * 100 * self.qty
+
+        if t == "cds":
+            return self.premium * 100 * self.qty
+
+        if t == "pds":
+            return self.premium * 100 * self.qty
 
         return 0
     
@@ -123,63 +151,82 @@ class Trade:
     # ---------------------------
     def simulate_payoff(self, sims=100000, mu=0.0):
         """
-        Monte Carlo payoff simulator for all Trade types.
+        Monte Carlo payoff simulator for all Trade types including Vertical Spreads.
         Returns simulated terminal P&L array.
         """
-
-        # extract params from trade object
+        # Extract params from trade object
         S0 = self.underlying_price
-        K = self.strike
+        K1 = self.strike          # Primary/Short strike
+        K2 = getattr(self, 'strike_2', None)       # Secondary/Long strike (for spreads)
         iv = self.iv
-        T = 0
+        
         if self.trade_type == "shares":
-            T = 1
+            T = 1.0
         else:
             T = max(self.dte, 0) / 365.0 
+            
         qty = self.qty
         premium = self.premium    # credit = +, debit = -
+        mult = 100 * qty
 
         # Generate terminal prices under GBM
-        # Antithetic variates for variance reduction
         half = sims // 2
         Z = np.random.normal(size=half)
         Z_full = np.concatenate([Z, -Z])
 
+        # ST represents the price of the underlying at expiration
         ST = S0 * np.exp((mu - 0.5 * iv**2) * T + iv * np.sqrt(T) * Z_full)
 
         # ================================
         # PAYOFF LOGIC BY TRADE TYPE
         # ================================
         payoff = np.zeros_like(ST)
-
         t = self.trade_type.lower()
 
-        # ----- Long Call -----
+        # ----- Single Leg Options -----
         if t == "long_call":
-            payoff = np.maximum(ST - K, 0) * 100 * qty - premium * 100 * qty
+            payoff = np.maximum(ST - K1, 0) * mult - premium * mult
 
-        # ----- Long Put -----
         elif t == "long_put":
-            payoff = np.maximum(K - ST, 0) * 100 * qty - premium * 100 * qty
+            payoff = np.maximum(K1 - ST, 0) * mult - premium * mult
 
-        # ----- Short Call -----
-        elif t == "short_call":
-            payoff = -np.maximum(ST - K, 0) * 100 * qty + premium * 100 * qty
+        elif t in ["short_call"]:
+            payoff = -np.maximum(ST - K1, 0) * mult + premium * mult
 
-        # ----- Short Put -----
-        elif t == "short_put":
-            payoff = -np.maximum(K - ST, 0) * 100 * qty + premium * 100 * qty
+        elif t in ["short_put", "csp"]:
+            payoff = -np.maximum(K1 - ST, 0) * mult + premium * mult
+
+        # ----- Vertical Credit Spreads (Income) -----
+        elif t == "pcs":  # Put Credit Spread
+            # Short K1, Long K2 (Protection)
+            short_pnl = -np.maximum(K1 - ST, 0) * mult
+            long_pnl = np.maximum(K2 - ST, 0) * mult if K2 else 0
+            payoff = short_pnl + long_pnl + (premium * mult)
+
+        elif t == "ccs":  # Call Credit Spread
+            # Short K1, Long K2 (Protection)
+            short_pnl = -np.maximum(ST - K1, 0) * mult
+            long_pnl = np.maximum(ST - K2, 0) * mult if K2 else 0
+            payoff = short_pnl + long_pnl + (premium * mult)
+
+        # ----- Vertical Debit Spreads (Directional) -----
+        elif t == "cds":  # Call Debit Spread
+            # Long K1, Short K2 (Sold against long)
+            long_pnl = np.maximum(ST - K1, 0) * mult
+            short_pnl = -np.maximum(ST - K2, 0) * mult if K2 else 0
+            payoff = long_pnl + short_pnl - (abs(premium) * mult)
+
+        elif t == "pds":  # Put Debit Spread
+            # Long K1, Short K2 (Sold against long)
+            long_pnl = np.maximum(K1 - ST, 0) * mult
+            short_pnl = -np.maximum(K2 - ST, 0) * mult if K2 else 0
+            payoff = long_pnl + short_pnl - (abs(premium) * mult)
 
         # ----- Covered Call -----
         elif t == "cc":
-            # long stock + short call
             stock_pnl = (ST - S0) * qty
-            call_pnl = -np.maximum(ST - K, 0) * 100 * qty + premium * 100 * qty
+            call_pnl = -np.maximum(ST - K1, 0) * mult + premium * mult
             payoff = stock_pnl + call_pnl
-
-        # ----- Cash Secured Put -----
-        elif t == "csp":
-            payoff = -np.maximum(K - ST, 0) * 100 * qty + premium * 100 * qty
 
         # ----- Shares Only -----
         elif t == "shares":

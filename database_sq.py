@@ -120,10 +120,10 @@ def delete_trade(trade_id):
     st.cache_data.clear()
 
 def get_portfolio_val(p_name):
-    cash = get_cash(p_name)
+    val = get_cash(p_name)
     trades = get_trades(p_name)
-    credit_trades = {"csp", "cc", "short_put", "short_call"}
-    val = cash
+    # Update this set to include your new credit types
+    credit_trades = {"csp", "cc", "short_put", "short_call", "pcs", "ccs"}
     for trade in trades:
         if trade.trade_type not in credit_trades:
             val += trade.value
