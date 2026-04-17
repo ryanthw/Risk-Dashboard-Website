@@ -23,6 +23,7 @@ class Trade:
         self.qty = qty
         self.strike = strike
         self.strike_2 = strike_2
+        self.sector = api.get_company_sector(self.ticker)
         self.premium = premium
         self.expiration = datetime.strptime(expiration, "%Y-%m-%d")
         self.underlying_price = underlying_price if underlying_price else api.get_price(self.ticker)

@@ -39,3 +39,26 @@ def get_historical_volatility(ticker_symbol, window=30):
     except Exception as e:
         print(f"Error fetching vol for {ticker_symbol}: {e}")
         return 0.30
+    
+def get_company_sector(ticker):
+    """
+    Fetches the sector for a given ticker. 
+    Primary: Finnhub (since you already use it)
+    Fallback: yfinance
+    """
+    try:
+        # --- Attempt 1: Finnhub ---
+        api_key = st.secrets["FINNHUB_API_KEY"]
+        client = finnhub.Client(api_key=api_key)
+        profile = client.company_profile2(symbol=ticker.upper())
+        
+        if profile and 'finnhubIndustry' in profile:
+            return profile['finnhubIndustry']
+        
+        # --- Attempt 2: yfinance Fallback ---
+        stock = yf.Ticker(ticker.upper())
+        return stock.info.get('sector', 'Unknown')
+        
+    except Exception as e:
+        print(f"Error fetching sector for {ticker}: {e}")
+        return "Unknown"
