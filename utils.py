@@ -187,6 +187,14 @@ def get_long_options_vals(trades) -> float:
             cost += price
     return cost
 
+def get_undeployed_cash(p_name) -> float:
+    trades = database.get_trades(p_name)
+    cash = database.get_cash(p_name)
+    for trade in trades:
+        if trade.trade_type in ["csp", "pcs", "ccs"]:
+            cash -= trade.max_loss
+    return cash
+
 
 # Positional Metrics
 def get_percent_risk_position(position: Trade, p_name) -> float:
