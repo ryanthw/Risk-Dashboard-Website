@@ -62,3 +62,37 @@ def get_company_sector(ticker):
     except Exception as e:
         print(f"Error fetching sector for {ticker}: {e}")
         return "Unknown"
+    
+def get_stock_beta(ticker) -> float:
+    """
+    Fetches the beta of a stock relative to the S&P 500.
+    Primary: Finnhub Basic Financials
+    Secondary: yfinance
+    """
+    ticker = ticker.upper()
+    try:
+        # --- Attempt 1: Finnhub ---
+        api_key = st.secrets["FINNHUB_API_KEY"]
+        client = finnhub.Client(api_key=api_key)
+        
+        # We request 'all' to ensure we get the 'metric' category
+        res = client.company_basic_financials(ticker, 'all')
+        
+        if res and 'metric' in res and 'beta' in res['metric']:
+            beta = res['metric']['beta']
+            if beta is not None:
+                return float(beta)
+        
+        # --- Attempt 2: yfinance Fallback ---
+        stock = yf.Ticker(ticker)
+        beta = stock.info.get('beta')
+        
+        if beta is not None:
+            return float(beta)
+            
+        # Default to 1.0 if no data is found (assumes market-average volatility)
+        return 1.0
+        
+    except Exception as e:
+        print(f"Error fetching beta for {ticker}: {e}")
+        return 1.0

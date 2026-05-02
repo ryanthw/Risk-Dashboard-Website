@@ -195,6 +195,55 @@ def get_undeployed_cash(p_name) -> float:
             cash -= trade.max_loss
     return cash
 
+def get_portfolio_beta_delta(p_name) -> float:
+    """
+    Calculates the Beta-Weighted Delta of the entire portfolio relative to SPY.
+    Formula: Σ (Position Delta * Position Beta)
+    """
+    trades = database.get_trades(p_name)
+    if not trades:
+        return 0.0
+
+    total_beta_delta = 0.0
+
+    for t in trades:
+        # 1. Get the Beta for the specific ticker
+        # If it's a broad fund like SCHD/VIG, beta is likely near 1.0
+        beta = api.get_stock_beta(t.ticker)
+
+        # 2. Estimate the Raw Delta (Shares = 1 per share, Options = Proxy)
+        # We use a 0.50 delta proxy for ATM/Income trades (CSPs/CCs)
+        # and a 0.20 delta proxy for spreads.
+        raw_delta = 0.0
+        
+        t_type = t.trade_type.lower()
+        qty = t.qty
+        
+        if t_type == "shares":
+            raw_delta = qty # 1.0 Delta per share
+            
+        elif t_type in ["csp", "short_put"]:
+            raw_delta = 0.50 * 100 * qty # Positive Delta (Bullish)
+            
+        elif t_type in ["cc", "short_call"]:
+            raw_delta = -0.50 * 100 * qty # Negative Delta (Bearish)
+            
+        elif t_type == "pcs":
+            raw_delta = 0.25 * 100 * qty # Moderately Bullish
+            
+        elif t_type == "ccs":
+            raw_delta = -0.25 * 100 * qty # Moderately Bearish
+            
+        elif t_type == "long_call" or t_type == "cds":
+            raw_delta = 0.40 * 100 * qty # Bullish
+            
+        elif t_type == "long_put" or t_type == "pds":
+            raw_delta = -0.40 * 100 * qty # Bearish
+
+        # 3. Apply the Beta Weighting
+        total_beta_delta += (raw_delta * beta)
+
+    return total_beta_delta
 
 # Positional Metrics
 def get_percent_risk_position(position: Trade, p_name) -> float:
