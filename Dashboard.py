@@ -193,10 +193,12 @@ with st.sidebar:
             st.write("Connecting to Finnhub...")
             utils.update_underlyings(selected_p) # Your existing logic
             st.write("Recalculating Monte Carlo simulations...")
+            utils.capture_and_save_snapshot(selected_p)
+            st.write("Saving Portfolio Snapshot")
             status.update(label="Refresh Complete!", state="complete", expanded=False)
         
         # Display a success message and rerun to show new data
-        st.success("Portfolio Updated!")
+        st.success("Portfolio Updated, Snapshot Logged!")
         time.sleep(1) # Brief pause so you can see the success message
         st.rerun()
 
@@ -323,8 +325,7 @@ with main_right:
     if not trades:
         st.info("No open trades.")
     else:
-        # We can make this a scrollable container to mimic your scrollable frame
-        with st.container(height=600): # Set a fixed height for scrolling
+        with st.container(height=600): 
             for t in trades:
                 with st.container(border=True):
                     c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
@@ -334,10 +335,46 @@ with main_right:
                     c3.metric("E[P]", f"{t.expected_profit:.2f}")
                     c4.metric("POP", f"{t.pop*100:.2f}%")
                     
-                    if st.button("Update Trade", key=f"upd_{t.trade_id}", use_container_width=True):
-                        st.session_state.editing_trade_id = t.trade_id
-                        st.rerun()
+                    btn_col1, btn_col2 = st.columns(2)
+                    
+                    with btn_col1:
+                        if st.button("Update Trade", key=f"upd_{t.trade_id}", use_container_width=True):
+                            st.session_state.editing_trade_id = t.trade_id
+                            st.rerun()
                 
-                    if st.button("Delete Trade", type="primary", key=f"del_{t.trade_id}", use_container_width=True):
-                        db.delete_trade(t.trade_id)
-                        st.rerun()
+                    with btn_col2:
+                        # Replace the simple Delete button with a Popover for the Archive/Delete flow
+                        with st.popover("Close / Delete", use_container_width=True):
+                            st.write("### Close Position")
+                            
+                            # --- SECTION 1: ARCHIVE ---
+                            st.write("**Archive to History**")
+                            # Safeguard: Input defaults to 0.00 if user clears it
+                            realized_pnl = st.number_input(
+                                "Final Realized P&L", 
+                                value=float(t.expected_profit),
+                                step=10.0,
+                                format="%.2f",
+                                key=f"pnl_in_{t.trade_id}"
+                            )
+                            
+                            if st.button("Confirm & Archive", key=f"arch_btn_{t.trade_id}", use_container_width=True):
+                                # Safeguard value check
+                                final_val = realized_pnl if realized_pnl is not None else 0.0
+                                
+                                # 1. Archive to history_trades table
+                                db.archive_trade(selected_p, t, final_val)
+                                # 2. Delete from active trades
+                                db.delete_trade(t.trade_id)
+                                
+                                st.success(f"Archived {t.ticker} with ${final_val:.2f} P&L")
+                                time.sleep(0.5)
+                                st.rerun()
+                            
+                            st.divider()
+                            
+                            # --- SECTION 2: PERMANENT DELETE ---
+                            st.write("**Mistake / Remove**")
+                            if st.button("Hard Delete (No History)", type="primary", key=f"hard_del_{t.trade_id}", use_container_width=True):
+                                db.delete_trade(t.trade_id)
+                                st.rerun()

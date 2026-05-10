@@ -1,6 +1,7 @@
 import pickle
 from supabase import create_client
 import streamlit as st
+from datetime import datetime
 
 # Initialize Supabase client
 @st.cache_resource
@@ -128,3 +129,68 @@ def get_portfolio_val(p_name):
         if trade.trade_type not in credit_trades:
             val += trade.value
     return val
+
+# Historical Data Storage
+def archive_trade(p_name, trade_obj, realized_pnl):
+    """
+    Archives a trade. 
+    Fixes JSON serialization by converting datetime objects to strings.
+    """
+    try:
+        # Safeguard for PnL
+        if realized_pnl is None:
+            realized_pnl = 0.0
+            
+        # --- FIX: Date Serialization ---
+        # If entry_date is a datetime object, convert to ISO string. 
+        # If it's already a string or None, keep as is.
+        entry_dt = getattr(trade_obj, 'opened', None)
+        if isinstance(entry_dt, datetime):
+            entry_dt = entry_dt.isoformat()
+            
+        # We also want to record exactly when the trade was closed
+        exit_dt = datetime.now().isoformat()
+
+        data = {
+            "portfolio_name": p_name,
+            "ticker": trade_obj.ticker,
+            "trade_type": trade_obj.trade_type,
+            "entry_date": entry_dt,
+            "exit_date": exit_dt,
+            "realized_pnl": float(realized_pnl),
+            "iv_at_close": getattr(trade_obj, 'iv', 0.0),
+            "max_loss": trade_obj.max_loss,
+            "final_value": getattr(trade_obj, 'value', 0.0)
+        }
+        
+        supabase.table("history_trades").insert(data).execute()
+        return True
+    except Exception as e:
+        # This will now catch and print the specific error if one remains
+        print(f"Error archiving trade: {e}")
+        return False
+
+def record_portfolio_snapshot(p_name, metrics):
+    """
+    Records a high-level health snapshot of the portfolio.
+    metrics should contain: net_liquidity, weighted_delta, expected_profit_total, erpa
+    """
+    try:
+        metrics["portfolio_name"] = p_name
+        supabase.table("history_snapshots").insert(metrics).execute()
+        return True
+    except Exception as e:
+        print(f"Error recording snapshot: {e}")
+        return False
+    
+def check_snapshot_exists(p_name, date_str):
+    """
+    Checks if a snapshot for the given portfolio and date (YYYY-MM-DD) exists.
+    """
+    res = supabase.table("history_snapshots")\
+        .select("id")\
+        .eq("portfolio_name", p_name)\
+        .gte("timestamp", f"{date_str}T00:00:00")\
+        .lte("timestamp", f"{date_str}T23:59:59")\
+        .execute()
+    return len(res.data) > 0

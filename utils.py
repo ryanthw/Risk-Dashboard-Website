@@ -3,6 +3,7 @@ import database_sq as database
 import api_interactions as api
 import yfinance as yf
 import numpy as np
+from datetime import datetime
 
 # Risk Section Metrics
 def get_percent_exposure(p_name) -> float:
@@ -272,3 +273,48 @@ def update_underlyings(p_name):
             pos.iv = tickers_iv[pos.ticker] 
         pos.refresh_pnl()
         database.store_trade(pos, p_name)
+
+# Historical Storage Utils
+def capture_and_save_snapshot(p_name):
+    """
+    Aggregates current portfolio metrics and commits them to history_snapshots.
+    """
+    # --- NEW: Check for today's existing snapshot ---
+    today = datetime.now().date().isoformat()
+    if database.check_snapshot_exists(p_name, today):
+        print(f"Snapshot already exists for {p_name} today. Skipping log.")
+        return False
+
+    try:
+        # 1. Fetch live data
+        trades = database.get_trades(p_name)
+        net_liq = get_net_liquidity(p_name)
+        weighted_delta = get_portfolio_beta_delta(p_name)
+        
+        # 2. Calculate Expected Profit Total
+        # This is the sum of all expected_profit values for open options
+        total_exp_profit = sum([t.expected_profit for t in trades if t.trade_type != 'shares'])
+        
+        # 3. Calculate ERPA (Expected Return Per Asset)
+        # Formula: Total Expected Profit / Total Portfolio Value (port_val)
+        port_val = database.get_portfolio_val(p_name)
+        erpa = (total_exp_profit / port_val) if port_val > 0 else 0.0
+
+        # 4. Construct Snapshot Dictionary
+        snapshot_metrics = {
+            "net_liquidity": net_liq,
+            "weighted_delta": weighted_delta,
+            "expected_profit_total": total_exp_profit,
+            "erpa": erpa
+        }
+
+        # 5. Commit to Supabase via database_sq
+        success = database.record_portfolio_snapshot(p_name, snapshot_metrics)
+        
+        if success:
+            print(f"Successfully recorded historical snapshot for {p_name}")
+        return success
+
+    except Exception as e:
+        print(f"Failed to capture snapshot: {e}")
+        return False
