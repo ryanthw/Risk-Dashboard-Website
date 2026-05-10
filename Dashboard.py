@@ -344,7 +344,7 @@ with main_right:
                 
                     with btn_col2:
                         # Replace the simple Delete button with a Popover for the Archive/Delete flow
-                        with st.popover("Close / Delete", use_container_width=True):
+                        with st.popover("Close", use_container_width=True):
                             st.write("### Close Position")
                             
                             # --- SECTION 1: ARCHIVE ---
