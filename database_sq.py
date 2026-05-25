@@ -194,3 +194,15 @@ def check_snapshot_exists(p_name, date_str):
         .lte("timestamp", f"{date_str}T23:59:59")\
         .execute()
     return len(res.data) > 0
+
+@st.cache_data(ttl=600)
+def get_historical_snapshots(p_name):
+    """
+    Retrieves all historical snapshots for a given portfolio.
+    """
+    response = supabase.table("history_snapshots")\
+        .select("*")\
+        .eq("portfolio_name", p_name)\
+        .order("timestamp", desc=False)\
+        .execute()
+    return response.data
