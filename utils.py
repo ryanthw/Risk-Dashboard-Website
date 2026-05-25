@@ -6,49 +6,47 @@ import numpy as np
 from datetime import datetime
 
 # Risk Section Metrics
-def get_percent_exposure(p_name) -> float:
-    exp = get_gross_exposure(p_name)
-    val = database.get_portfolio_val(p_name)
+def get_percent_exposure(user_id, p_name) -> float:
+    exp = get_gross_exposure(user_id, p_name)
+    val = database.get_portfolio_val(user_id, p_name)
     return (exp / val) * 100 if val > 0 else 0.0
 
-def get_gross_exposure(p_name) -> float:
-    trades = database.get_trades(p_name)
+def get_gross_exposure(user_id, p_name) -> float:
+    trades = database.get_trades(user_id, p_name)
     cumm_exposure = 0.0
     for trade in trades:
         cumm_exposure += trade.max_loss
     return cumm_exposure
 
-def get_cash_percent(p_name) -> float:
-    cash = database.get_cash(p_name)
-    total_val = database.get_portfolio_val(p_name)
+def get_cash_percent(user_id, p_name) -> float:
+    cash = database.get_cash(user_id, p_name)
+    total_val = database.get_portfolio_val(user_id, p_name)
     return (cash / total_val * 100) if total_val > 0 else 0.0
 
-def get_cash_to_pos_ratio(p_name) -> float:
-    cash = database.get_cash(p_name)
-    # We use get_trades and calculate value since get_positional_val 
-    # might not be in the new database_sq.py yet
-    trades = database.get_trades(p_name)
+def get_cash_to_pos_ratio(user_id, p_name) -> float:
+    cash = database.get_cash(user_id, p_name)
+    trades = database.get_trades(user_id, p_name)
     pos_val = sum(t.value for t in trades)
     return (cash / pos_val) if pos_val > 0 else 1.0
 
-def get_leverage_ratio(p_name) -> float:
-    exposure = get_gross_exposure(p_name)
-    port_val = database.get_portfolio_val(p_name)
+def get_leverage_ratio(user_id, p_name) -> float:
+    exposure = get_gross_exposure(user_id, p_name)
+    port_val = database.get_portfolio_val(user_id, p_name)
     return (exposure / port_val) if port_val > 0 else 0.0
 
-def get_highest_pos_percent(p_name) -> float:
+def get_highest_pos_percent(user_id, p_name) -> float:
     highest_val = 0.0
-    total_val = database.get_portfolio_val(p_name)
-    positions = database.get_trades(p_name)
+    total_val = database.get_portfolio_val(user_id, p_name)
+    positions = database.get_trades(user_id, p_name)
     for pos in positions:
         if highest_val < pos.max_loss:
             highest_val = pos.max_loss
     return (highest_val / total_val * 100) if total_val > 0 else 0.0
 
-def get_hhi(p_name) -> float:
-    exp = get_gross_exposure(p_name)
+def get_hhi(user_id, p_name) -> float:
+    exp = get_gross_exposure(user_id, p_name)
     hhi = 0.0
-    positions = database.get_trades(p_name)
+    positions = database.get_trades(user_id, p_name)
 
     if exp <= 0 or not positions:
         return 0.0
@@ -70,21 +68,21 @@ def get_hhi(p_name) -> float:
 def get_expected_returns(rets) -> float:
     return sum(rets)
 
-def get_max_profit(p_name) -> float:
+def get_max_profit(user_id, p_name) -> float:
     max_p = 0.0
-    positions = database.get_trades(p_name)
+    positions = database.get_trades(user_id, p_name)
     for pos in positions:
         max_p += pos.max_gain
     return max_p
 
-def get_risk_reward_ratio(p_name) -> float:
-    max_p = get_max_profit(p_name)
-    max_l = get_gross_exposure(p_name)
+def get_risk_reward_ratio(user_id, p_name) -> float:
+    max_p = get_max_profit(user_id, p_name)
+    max_l = get_gross_exposure(user_id, p_name)
     return (max_l / max_p) if max_p > 0 else 0.0
 
-def get_port_expected_return(p_name) -> float:
-    base = database.get_trades(p_name)
-    total_val_port = database.get_portfolio_val(p_name)
+def get_port_expected_return(user_id, p_name) -> float:
+    base = database.get_trades(user_id, p_name)
+    total_val_port = database.get_portfolio_val(user_id, p_name)
 
     if total_val_port <= 0.0:
         return 0.0
@@ -102,9 +100,9 @@ def get_port_expected_return(p_name) -> float:
         expected_ret += w * e_r
     return expected_ret
 
-def get_port_downside_variance(p_name, target_return) -> float:
-    trades = database.get_trades(p_name)
-    total_val_port = database.get_portfolio_val(p_name)
+def get_port_downside_variance(user_id, p_name, target_return) -> float:
+    trades = database.get_trades(user_id, p_name)
+    total_val_port = database.get_portfolio_val(user_id, p_name)
 
     if total_val_port <= 0.0:
         return 0.0
@@ -119,40 +117,35 @@ def get_port_downside_variance(p_name, target_return) -> float:
         w = pos_val / total_val_port
         r = pos.pnl_dist
 
-        # Downside deviation per Sortino definition
         downside = np.minimum(0.0, r - target_return)
-
-        # Portfolio aggregation (variance scales with w^2)
         downside_var += (w ** 2) * np.mean(downside ** 2)
 
     return downside_var
 
-def get_sortino_ratio(p_name) -> float:
-    er = get_port_expected_return(p_name)
-    downside_var = get_port_downside_variance(p_name, 0.0)
+def get_sortino_ratio(user_id, p_name) -> float:
+    er = get_port_expected_return(user_id, p_name)
+    downside_var = get_port_downside_variance(user_id, p_name, 0.0)
 
     if downside_var <= 0:
         return 0.0
     
     return er / np.sqrt(downside_var)
 
-def get_er_percent(ers, p_name) -> float:
+def get_er_percent(user_id, ers, p_name) -> float:
     er = get_expected_returns(ers)
-    port_val = database.get_portfolio_val(p_name)
+    port_val = database.get_portfolio_val(user_id, p_name)
     return (er / port_val) * 100 if port_val > 0 else 0.0
 
-def get_er_ann(p_name) -> float:
-    # Calculates weighted avg of ERPA across all non-stock positions
+def get_er_ann(user_id, p_name) -> float:
     avg_er_ann = 0.0
-    port_val = database.get_portfolio_val(p_name)
-    positions = database.get_trades(p_name)
+    port_val = database.get_portfolio_val(user_id, p_name)
+    positions = database.get_trades(user_id, p_name)
 
     if len(positions) == 0 or port_val <= 0:
         return 0.0
 
     for pos in positions:
         if pos.trade_type not in ["shares", "cc"]:
-            # Check if pos_len is zero to avoid division by zero
             days = pos.pos_len if pos.pos_len > 0 else 1
             cycle_yield = pos.expected_profit / abs(pos.max_loss)
             er_ann = cycle_yield * (365 / days)
@@ -161,10 +154,9 @@ def get_er_ann(p_name) -> float:
     
     return avg_er_ann
 
-# Util method for net liquidity
-def get_net_liquidity(p_name) -> float:
-    liq = database.get_cash(p_name)
-    positions = database.get_trades(p_name)
+def get_net_liquidity(user_id, p_name) -> float:
+    liq = database.get_cash(user_id, p_name)
+    positions = database.get_trades(user_id, p_name)
     for pos in positions:
         if pos.trade_type == "shares":
             liq += pos.value
@@ -188,75 +180,54 @@ def get_long_options_vals(trades) -> float:
             cost += price
     return cost
 
-def get_undeployed_cash(p_name) -> float:
-    trades = database.get_trades(p_name)
-    cash = database.get_cash(p_name)
+def get_undeployed_cash(user_id, p_name) -> float:
+    trades = database.get_trades(user_id, p_name)
+    cash = database.get_cash(user_id, p_name)
     for trade in trades:
         if trade.trade_type in ["csp", "pcs", "ccs"]:
             cash -= trade.max_loss
     return cash
 
-def get_portfolio_beta_delta(p_name) -> float:
-    """
-    Calculates the Beta-Weighted Delta of the entire portfolio relative to SPY.
-    Formula: Σ (Position Delta * Position Beta)
-    """
-    trades = database.get_trades(p_name)
+def get_portfolio_beta_delta(user_id, p_name) -> float:
+    trades = database.get_trades(user_id, p_name)
     if not trades:
         return 0.0
 
     total_beta_delta = 0.0
 
     for t in trades:
-        # 1. Get the Beta for the specific ticker
-        # If it's a broad fund like SCHD/VIG, beta is likely near 1.0
         beta = api.get_stock_beta(t.ticker)
-
-        # 2. Estimate the Raw Delta (Shares = 1 per share, Options = Proxy)
-        # We use a 0.50 delta proxy for ATM/Income trades (CSPs/CCs)
-        # and a 0.20 delta proxy for spreads.
         raw_delta = 0.0
-        
         t_type = t.trade_type.lower()
         qty = t.qty
         
         if t_type == "shares":
-            raw_delta = qty # 1.0 Delta per share
-            
+            raw_delta = qty 
         elif t_type in ["csp", "short_put"]:
-            raw_delta = 0.50 * 100 * qty # Positive Delta (Bullish)
-            
+            raw_delta = 0.50 * 100 * qty 
         elif t_type in ["cc", "short_call"]:
-            raw_delta = -0.50 * 100 * qty # Negative Delta (Bearish)
-            
+            raw_delta = -0.50 * 100 * qty 
         elif t_type == "pcs":
-            raw_delta = 0.25 * 100 * qty # Moderately Bullish
-            
+            raw_delta = 0.25 * 100 * qty 
         elif t_type == "ccs":
-            raw_delta = -0.25 * 100 * qty # Moderately Bearish
-            
+            raw_delta = -0.25 * 100 * qty 
         elif t_type == "long_call" or t_type == "cds":
-            raw_delta = 0.40 * 100 * qty # Bullish
-            
+            raw_delta = 0.40 * 100 * qty 
         elif t_type == "long_put" or t_type == "pds":
-            raw_delta = -0.40 * 100 * qty # Bearish
+            raw_delta = -0.40 * 100 * qty 
 
-        # 3. Apply the Beta Weighting
         total_beta_delta += (raw_delta * beta)
 
     return total_beta_delta
 
-# Positional Metrics
-def get_percent_risk_position(position: Trade, p_name) -> float:
-    max_loss_port = database.get_portfolio_val(p_name)
+def get_percent_risk_position(user_id, position: Trade, p_name) -> float:
+    max_loss_port = database.get_portfolio_val(user_id, p_name)
     max_loss_pos = position.max_loss
     return (max_loss_pos / max_loss_port) * 100 if max_loss_port > 0 else 0.
 
-# Update Underlying Price for all Positions
-def update_underlyings(p_name):
-    positions = database.get_trades(p_name)
+def update_underlyings(user_id, p_name):
+    positions = database.get_trades(user_id, p_name)
 
-    # Limit API calls by building dict of tickers, prices
     tickers_prices = {}
     tickers_iv = {}
     for pos in positions:
@@ -272,35 +243,22 @@ def update_underlyings(p_name):
         if pos.trade_type == "shares" and pos.ticker in tickers_iv:
             pos.iv = tickers_iv[pos.ticker] 
         pos.refresh_pnl()
-        database.store_trade(pos, p_name)
+        database.store_trade(user_id, pos, p_name)
 
-# Historical Storage Utils
-def capture_and_save_snapshot(p_name):
-    """
-    Aggregates current portfolio metrics and commits them to history_snapshots.
-    """
-    # --- NEW: Check for today's existing snapshot ---
+def capture_and_save_snapshot(user_id, p_name):
     today = datetime.now().date().isoformat()
-    if database.check_snapshot_exists(p_name, today):
+    if database.check_snapshot_exists(user_id, p_name, today):
         print(f"Snapshot already exists for {p_name} today. Skipping log.")
         return False
 
     try:
-        # 1. Fetch live data
-        trades = database.get_trades(p_name)
-        net_liq = get_net_liquidity(p_name)
-        weighted_delta = get_portfolio_beta_delta(p_name)
-        
-        # 2. Calculate Expected Profit Total
-        # This is the sum of all expected_profit values for open options
+        trades = database.get_trades(user_id, p_name)
+        net_liq = get_net_liquidity(user_id, p_name)
+        weighted_delta = get_portfolio_beta_delta(user_id, p_name)
         total_exp_profit = sum([t.expected_profit for t in trades if t.trade_type != 'shares'])
-        
-        # 3. Calculate ERPA (Expected Return Per Asset)
-        # Formula: Total Expected Profit / Total Portfolio Value (port_val)
-        port_val = database.get_portfolio_val(p_name)
+        port_val = database.get_portfolio_val(user_id, p_name)
         erpa = (total_exp_profit / port_val) if port_val > 0 else 0.0
 
-        # 4. Construct Snapshot Dictionary
         snapshot_metrics = {
             "net_liquidity": net_liq,
             "weighted_delta": weighted_delta,
@@ -308,11 +266,7 @@ def capture_and_save_snapshot(p_name):
             "erpa": erpa
         }
 
-        # 5. Commit to Supabase via database_sq
-        success = database.record_portfolio_snapshot(p_name, snapshot_metrics)
-        
-        if success:
-            print(f"Successfully recorded historical snapshot for {p_name}")
+        success = database.record_portfolio_snapshot(user_id, p_name, snapshot_metrics)
         return success
 
     except Exception as e:
