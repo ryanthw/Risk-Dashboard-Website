@@ -8,6 +8,13 @@ import numpy as np
 
 st.set_page_config(page_title="Portfolio Visuals", layout="wide")
 
+# --- Auth Check ---
+if "user" not in st.session_state:
+    st.warning("Please login on the Home page first.")
+    st.stop()
+
+user_id = st.session_state.user.id
+
 # Verify a portfolio is selected
 if "active_portfolio" not in st.session_state or not st.session_state.active_portfolio:
     st.warning("👈 Please select a portfolio on the Home page first.")
@@ -16,7 +23,7 @@ if "active_portfolio" not in st.session_state or not st.session_state.active_por
 selected_p = st.session_state.active_portfolio
 st.title(f"Visual Analysis: {selected_p}")
 
-trades = db.get_trades(selected_p)
+trades = db.get_trades(user_id, selected_p)
 
 if not trades:
     st.info("No trades found to visualize.")
@@ -31,12 +38,11 @@ else:
             "POP": t.pop * 100,
             "Type": t.trade_type,
             "Exp": t.expiration,
-            "Risk": abs(t.max_loss), # Ensure risk is a positive value for the pie
-            "Portfolio-Risk(%)": utils.get_percent_risk_position(t, selected_p)
+            "Risk": abs(t.max_loss), 
+            "Portfolio-Risk(%)": utils.get_percent_risk_position(user_id, t, selected_p)
         })
     df = pd.DataFrame(data)
 
-    # NEW: 3-Column Layout for Top-Level Visuals
     col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
@@ -49,8 +55,6 @@ else:
 
     with col2:
         st.subheader("Options Capital at Risk")
-        
-        # NEW: Filter out 'shares' so the scale only reflects option risk
         options_only_df = df.query("Type != 'shares'")
         
         if not options_only_df.empty:
@@ -65,43 +69,34 @@ else:
 
     with col3:
         st.subheader("Portfolio Risk Allocation")
-        # Creating the Pie Chart
         fig_pie = px.pie(
             df, values="Risk", names="Ticker",
-            hole=0.4, # Makes it a Donut chart (more modern look)
+            hole=0.4, 
             template="plotly_dark",
             color_discrete_sequence=px.colors.sequential.RdBu_r
         )
         fig_pie.update_traces(textinfo='percent+label')
-        fig_pie.update_layout(showlegend=False) # Hide legend to save space in small column
+        fig_pie.update_layout(showlegend=False) 
         st.plotly_chart(fig_pie, width="content")
 
 if trades:
     st.subheader("Portfolio Aggregated P&L Distribution")
 
-    # 1. Collect all simulation arrays
-    # Assuming each t.pnl_dist is a numpy array of length 100,000
     all_sims = [np.array(t.pnl_dist) for t in trades if t.trade_type not in ["shares"]]
 
     if all_sims:
-        # 2. Sum the simulations element-wise
-        # This represents the portfolio's outcome across 100,000 different scenarios
         portfolio_sims = np.sum(all_sims, axis=0)
 
-        # 3. Calculate Aggregate Stats
         avg_pnl = np.mean(portfolio_sims)
         std_dev = np.std(portfolio_sims)
         prob_profit = (portfolio_sims > 0).mean() * 100
 
-        # Display Summary Stats
         m1, m2, m3 = st.columns(3)
         m1.metric("Agg. Expected Return", f"${avg_pnl:,.2f}")
         m2.metric("Portfolio Std Dev", f"${std_dev:,.2f}")
         m3.metric("Portfolio POP", f"{prob_profit:.1f}%")
 
-        # 4. Create the Distribution Plot (Histogram + KDE)
-        # Using a subset of data for faster rendering if sims are very large
-        plot_data = portfolio_sims[::10] # Sample every 10th result for speed
+        plot_data = portfolio_sims[::10] 
         
         fig = ff.create_distplot(
             [plot_data], 
@@ -119,7 +114,6 @@ if trades:
             showlegend=False
         )
         
-        # Add a vertical line for the Break-Even (0)
         fig.add_vline(x=0, line_dash="dash", line_color="red", annotation_text="Break-Even")
 
         st.plotly_chart(fig, width="stretch")
@@ -127,21 +121,16 @@ if trades:
     else:
         st.warning("No simulation data found. Try refreshing market data on the Dashboard.")
 
-def render_compounding_chart(trades, port_val):
+def render_compounding_chart(user_id, trades, port_val):
     st.subheader("10-Year Wealth Forecast")
     
-    annual_rate = utils.get_er_ann(selected_p)
+    annual_rate = utils.get_er_ann(user_id, selected_p)
     if not annual_rate or port_val <= 0:
         st.info("Add risk-defined trades to generate a forecast.")
         return
 
     years = np.arange(0, 11)
-    
-    # 1. Standard Forecast (Target)
     forecast_values = port_val * (1 + annual_rate) ** years
-    
-    # 2. Conservative Forecast (70% of Target Rate)
-    # This accounts for the 'slippage' between math and reality
     conservative_rate = annual_rate * 0.7
     cons_values = port_val * (1 + conservative_rate) ** years
     
@@ -151,18 +140,16 @@ def render_compounding_chart(trades, port_val):
         "Conservative (70%)": cons_values
     })
 
-    # 3. Create the Chart
     fig = px.line(
         df_forecast, x="Year", y=["Target Projection", "Conservative (70%)"],
         title=f"Projected Growth (Target: {annual_rate*100:.1f}%)",
         labels={"value": "Account Balance ($)", "variable": "Scenario"},
         color_discrete_map={
-            "Target Projection": "#00CC96", # Green
-            "Conservative (70%)": "#636EFA"  # Blue/Gray
+            "Target Projection": "#00CC96", 
+            "Conservative (70%)": "#636EFA"  
         }
     )
     
-    # Stylize the conservative line as dashed
     fig.update_traces(patch={"line": {"dash": "dash"}}, selector={"name": "Conservative (70%)"})
     fig.update_layout(yaxis_tickformat="$,.0f", hovermode="x unified")
     
@@ -172,4 +159,4 @@ def render_compounding_chart(trades, port_val):
                f"Conservative assumes a realization of {conservative_rate*100:.1f}% APR.")
 
 if trades:
-    render_compounding_chart(trades, db.get_portfolio_val(selected_p))
+    render_compounding_chart(user_id, trades, db.get_portfolio_val(user_id, selected_p))

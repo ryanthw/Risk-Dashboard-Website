@@ -5,6 +5,13 @@ import plotly.express as px
 
 st.set_page_config(page_title="Historical Data", layout="wide")
 
+# --- Auth Check ---
+if "user" not in st.session_state:
+    st.warning("Please login on the Home page first.")
+    st.stop()
+
+user_id = st.session_state.user.id
+
 # Verify a portfolio is selected
 if "active_portfolio" not in st.session_state or not st.session_state.active_portfolio:
     st.warning("👈 Please select a portfolio on the Home page first.")
@@ -14,7 +21,7 @@ selected_p = st.session_state.active_portfolio
 st.title(f"Historical Analysis: {selected_p}")
 
 # Fetch snapshots
-snapshots = db.get_historical_snapshots(selected_p)
+snapshots = db.get_historical_snapshots(user_id, selected_p)
 
 if not snapshots:
     st.info("No portfolio snapshots found for the current portfolio. You can generate snapshots by clicking 'Refresh Market Data' on the Dashboard.")
@@ -23,7 +30,6 @@ else:
     df = pd.DataFrame(snapshots)
     
     # Ensure timestamp is datetime
-    # Supabase usually returns ISO strings which pd.to_datetime handles well
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     
     st.subheader("Portfolio Value Over Time (Net Liquidity)")

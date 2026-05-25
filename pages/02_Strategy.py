@@ -9,6 +9,13 @@ import plotly.figure_factory as ff
 
 st.set_page_config(page_title="PM Strategy", layout="wide")
 
+# --- Auth Check ---
+if "user" not in st.session_state:
+    st.warning("Please login on the Home page first.")
+    st.stop()
+
+user_id = st.session_state.user.id
+
 # 1. Verification
 if "active_portfolio" not in st.session_state or not st.session_state.active_portfolio:
     st.warning("👈 Please select a portfolio on the Home page first.")
@@ -18,8 +25,8 @@ selected_p = st.session_state.active_portfolio
 st.title(f"PM Strategy & Allocation: {selected_p}")
 
 # 2. Data Loading & Pre-processing
-trades = db.get_trades(selected_p)
-port_val = db.get_portfolio_val(selected_p)
+trades = db.get_trades(user_id, selected_p)
+port_val = db.get_portfolio_val(user_id, selected_p)
 
 if not trades:
     st.info("No trades found. Add positions to see PM analytics.")
@@ -38,7 +45,7 @@ for t in trades:
     })
 df = pd.DataFrame(data)
 
-# --- ADVANCED MATH (Upfront for Vitals) ---
+# --- ADVANCED MATH ---
 tickers = list(set(df["Ticker"].tolist()))
 hist_data = yf.download(tickers, period="6mo", progress=False)['Close']
 returns = hist_data.pct_change().dropna()
@@ -68,7 +75,7 @@ avg_corr = weighted_corr_sum / weight_product_sum if weight_product_sum > 0 else
 anti_corr_score = 1 - avg_corr
 
 # Calculate Vitals
-beta_delta = utils.get_portfolio_beta_delta(selected_p)
+beta_delta = utils.get_portfolio_beta_delta(user_id, selected_p)
 total_theta = sum([row['Expected Profit'] / row['DTE'] for idx, row in df.iterrows() if row['Type'] != 'shares'])
 
 # --- SECTION 1: INSTITUTIONAL HEALTH VITALS ---
@@ -128,13 +135,26 @@ with col_guard:
 # --- SECTION 3: FULFILLMENT ---
 st.divider()
 st.subheader("🎯 Income Factory Fulfillment")
-TARGETS = {"Dividend Engine": 0.25, "Income Driver (Wheel)": 0.60, "Credit Spreads": 0.10, "Cash/Hedges": 0.05}
+TARGETS = {
+    "Dividend Engine": 0.125, 
+    "S&P 500 Core": 0.125,
+    "Income Driver (Wheel)": 0.60, 
+    "Credit Spreads": 0.10, 
+    "Cash/Hedges": 0.05
+}
 core_engine_tickers = ["SCHD", "VIG", "ORC", "MAIN", "AGNC", "ARCC"]
 
 engine_risk = df[(df["Type"] == "shares") & (df["Ticker"].isin(core_engine_tickers))]["Max Loss"].sum()
-driver_risk = df[(df["Type"].isin(["csp", "cc", "short_put", "short_call"])) | ((df["Type"] == "shares") & (~df["Ticker"].isin(core_engine_tickers)))]["Max Loss"].sum()
+spy_risk = df[(df["Type"] == "shares") & (df["Ticker"] == "SPY")]["Max Loss"].sum()
+
+# Income Driver: Non-core shares (excluding SPY and Dividend list) + Short Options (excluding Spreads)
+driver_risk = df[
+    (df["Type"].isin(["csp", "cc", "short_put", "short_call"])) | 
+    ((df["Type"] == "shares") & (~df["Ticker"].isin(core_engine_tickers)) & (df["Ticker"] != "SPY"))
+]["Max Loss"].sum()
+
 spread_risk = df[df["Type"].isin(["pcs", "ccs", "cds", "pds"])]["Max Loss"].sum()
-actual_cash = utils.get_undeployed_cash(selected_p)
+actual_cash = utils.get_undeployed_cash(user_id, selected_p)
 
 def render_fulfillment(label, actual_val, target_pct):
     actual_pct = actual_val / port_val if port_val > 0 else 0
@@ -144,10 +164,12 @@ def render_fulfillment(label, actual_val, target_pct):
     c2.progress(progress)
     c3.metric("Actual", f"{actual_pct*100:.1f}%", f"{(actual_pct-target_pct)*100:.1f}% vs Target")
 
-render_fulfillment("Core Engine", engine_risk, TARGETS["Dividend Engine"])
+render_fulfillment("Dividend Engine", engine_risk, TARGETS["Dividend Engine"])
+render_fulfillment("S&P 500 Core", spy_risk, TARGETS["S&P 500 Core"])
 render_fulfillment("Income Driver", driver_risk, TARGETS["Income Driver (Wheel)"])
 render_fulfillment("Credit Spreads", spread_risk, TARGETS["Credit Spreads"])
 render_fulfillment("Cash", actual_cash, TARGETS["Cash/Hedges"])
+
 
 # --- SECTION 4: CORRELATION ---
 st.divider()
