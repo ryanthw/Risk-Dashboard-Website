@@ -86,9 +86,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Initialize DB ---
-db.init_db()
-
 # --- Sidebar: Portfolio Management ---
 with st.sidebar:
     st.title("Portfolio Manager")
