@@ -183,3 +183,97 @@ st.plotly_chart(fig_heat, width='stretch')
 if high_corr_flags:
     st.warning("⚠️ **High Correlation Flags**")
     st.dataframe(pd.DataFrame(high_corr_flags), width='stretch', hide_index=True)
+
+# --- SECTION 5: OPPORTUNITY SCANNER ---
+st.divider()
+st.subheader("🔍 Income Driver: Opportunity Scanner")
+st.write("Scan a custom watchlist for high IV, low cost, and diversification opportunities (Wheel Strategy).")
+
+with st.expander("Configure Scanner", expanded=True):
+    col_in1, col_in2 = st.columns([2, 1])
+    
+    default_watchlist = "AMD, F, BAC, KO, TGT, XOM, PFE, INTC, PLTR, SOFI, CCL, AAL, VALE, RDW, CLSK"
+    watchlist_input = col_in1.text_area("Watchlist (Comma Separated)", value=default_watchlist, help="Enter tickers you are willing to own.")
+    
+    max_price = col_in2.slider("Max Share Price ($)", 10, 500, 100)
+    target_dte = 45
+
+    if st.button("Run Opportunity Scan", use_container_width=True):
+        tickers_to_scan = [t.strip().upper() for t in watchlist_input.split(",") if t.strip()]
+        
+        if not tickers_to_scan:
+            st.error("Please enter at least one ticker.")
+        else:
+            with st.status("Scanning market data...", expanded=True) as status:
+                results = []
+                
+                # Calculate current sector exposure for diversification scoring
+                sector_exposure = df.groupby("Sector")["Max Loss"].sum()
+                total_max_loss = sector_exposure.sum()
+                sector_weights = (sector_exposure / total_max_loss).to_dict() if total_max_loss > 0 else {}
+                
+                import api_interactions as api_int
+                from datetime import datetime, timedelta
+
+                for ticker in tickers_to_scan:
+                    try:
+                        status.write(f"Analyzing {ticker}...")
+                        price = api_int.get_price(ticker)
+                        
+                        if price > max_price or price <= 0:
+                            continue
+                            
+                        iv = api_int.get_historical_volatility(ticker)
+                        sector = api_int.get_company_sector(ticker)
+                        
+                        # Diversification Scoring: Reward sectors you DON'T have much of
+                        current_weight = sector_weights.get(sector, 0.0)
+                        div_score = 1.0 - current_weight
+                        
+                        # Ranking Score: IV * Diversification
+                        rank_score = iv * div_score
+                        
+                        # Suggest Strike (Approx 0.30 Delta)
+                        # Formula: Strike = Price * (1 - 0.5 * IV * sqrt(DTE/365))
+                        std_dev_move = iv * np.sqrt(target_dte / 365.0)
+                        suggested_strike = price * (1 - 0.5 * std_dev_move)
+                        
+                        # Round to nearest 0.5 or 1.0 for realism
+                        if suggested_strike > 20:
+                            suggested_strike = round(suggested_strike)
+                        else:
+                            suggested_strike = round(suggested_strike * 2) / 2
+                            
+                        exp_date = (datetime.now() + timedelta(days=target_dte)).strftime("%Y-%m-%d")
+                        
+                        results.append({
+                            "Ticker": ticker,
+                            "Sector": sector,
+                            "Price": f"${price:.2f}",
+                            "IV (30d)": f"{iv*100:.1f}%",
+                            "Suggested Strike": f"${suggested_strike}",
+                            "Suggested Exp": exp_date,
+                            "Div. Rating": "Good" if current_weight < 0.05 else ("Neutral" if current_weight < 0.15 else "Poor"),
+                            "_score": rank_score
+                        })
+                    except Exception as e:
+                        status.write(f"Error scanning {ticker}: {e}")
+                        continue
+                
+                if results:
+                    # Sort by rank_score descending
+                    results_df = pd.DataFrame(results).sort_values("_score", ascending=False).drop(columns=["_score"])
+                    
+                    status.update(label="Scan Complete!", state="complete", expanded=False)
+                    st.success(f"Found {len(results_df)} opportunities matching your criteria.")
+                    
+                    st.dataframe(
+                        results_df,
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                    st.info("💡 **Tip:** 'Good' Diversification Rating means the ticker is in a sector where you currently have low exposure (<5%).")
+                else:
+                    status.update(label="No matches found.", state="error", expanded=True)
+                    st.warning("No tickers from your watchlist met the price criteria or had valid data.")
+
