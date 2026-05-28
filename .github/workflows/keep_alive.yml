@@ -1,0 +1,15 @@
+name: Keep App Alive
+
+on:
+  schedule:
+    # Runs every 6 hours to prevent Streamlit hibernation
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Streamlit App
+        run: |
+          curl -I https://portfolio-risk-manager.streamlit.app/
