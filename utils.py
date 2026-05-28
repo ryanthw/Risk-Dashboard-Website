@@ -246,8 +246,10 @@ def update_underlyings(user_id, p_name):
         database.store_trade(user_id, pos, p_name)
 
 def capture_and_save_snapshot(user_id, p_name):
-    today = datetime.now().date().isoformat()
-    if database.check_snapshot_exists(user_id, p_name, today):
+    now = datetime.now()
+    today_iso = now.date().isoformat()
+    
+    if database.check_snapshot_exists(user_id, p_name, today_iso):
         print(f"Snapshot already exists for {p_name} today. Skipping log.")
         return False
 
@@ -259,7 +261,11 @@ def capture_and_save_snapshot(user_id, p_name):
         port_val = database.get_portfolio_val(user_id, p_name)
         erpa = (total_exp_profit / port_val) if port_val > 0 else 0.0
 
+        # Standardize timestamp to 4:00 PM of the current calendar day
+        standardized_dt = now.replace(hour=16, minute=0, second=0, microsecond=0)
+
         snapshot_metrics = {
+            "timestamp": standardized_dt.isoformat(),
             "net_liquidity": net_liq,
             "weighted_delta": weighted_delta,
             "expected_profit_total": total_exp_profit,
