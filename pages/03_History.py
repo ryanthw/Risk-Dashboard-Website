@@ -29,8 +29,11 @@ else:
     # Convert to DataFrame
     df = pd.DataFrame(snapshots)
     
-    # Ensure timestamp is datetime
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    # Ensure timestamp is datetime, handling mixed formats robustly
+    df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True, errors='coerce')
+    
+    # Drop rows where timestamp couldn't be parsed and sort for the chart
+    df = df.dropna(subset=['timestamp']).sort_values('timestamp')
     
     st.subheader("Portfolio Value Over Time (Net Liquidity)")
     
