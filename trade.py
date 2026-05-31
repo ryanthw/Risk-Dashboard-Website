@@ -157,18 +157,12 @@ class Trade:
         """
         # Extract params from trade object
         S0 = self.underlying_price
-        K1 = self.strike          # Primary/Short strike
-        K2 = getattr(self, 'strike_2', None)       # Secondary/Long strike (for spreads)
         iv = self.iv
         
         if self.trade_type == "shares":
             T = 1.0
         else:
             T = max(self.dte, 0) / 365.0 
-            
-        qty = self.qty
-        premium = self.premium    # credit = +, debit = -
-        mult = 100 * qty
 
         # Generate terminal prices under GBM
         half = sims // 2
@@ -177,6 +171,19 @@ class Trade:
 
         # ST represents the price of the underlying at expiration
         ST = S0 * np.exp((mu - 0.5 * iv**2) * T + iv * np.sqrt(T) * Z_full)
+
+        return self.get_payoff_at_prices(ST)
+
+    def get_payoff_at_prices(self, ST):
+        """
+        Calculates payoff for a given array of terminal prices.
+        """
+        S0 = self.underlying_price
+        K1 = self.strike          # Primary/Short strike
+        K2 = getattr(self, 'strike_2', None)       # Secondary/Long strike (for spreads)
+        qty = self.qty
+        premium = self.premium    # credit = +, debit = -
+        mult = 100 * qty
 
         # ================================
         # PAYOFF LOGIC BY TRADE TYPE
@@ -258,6 +265,39 @@ class Trade:
         if pnl is None:
             return 0.0
         return float(np.mean(pnl))
+    
+    @property
+    def var_95(self):
+        """ Value at Risk (95% confidence) """
+        if self.pnl_dist is None: return 0.0
+        return float(np.percentile(self.pnl_dist, 5))
+
+    @property
+    def cvar_95(self):
+        """ Conditional Value at Risk (95% confidence) """
+        if self.pnl_dist is None: return 0.0
+        var = self.var_95
+        tail = self.pnl_dist[self.pnl_dist <= var]
+        return float(np.mean(tail)) if len(tail) > 0 else var
+
+    @property
+    def kelly_criterion(self):
+        """ Suggested Kelly fraction (Half-Kelly for safety) """
+        if self.pnl_dist is None: return 0.0
+        wins = self.pnl_dist[self.pnl_dist > 0]
+        losses = self.pnl_dist[self.pnl_dist < 0]
+        
+        if len(losses) == 0: return 1.0 # No loss simulated
+        if len(wins) == 0: return 0.0 # No wins simulated
+        
+        avg_win = np.mean(wins)
+        avg_loss = abs(np.mean(losses))
+        
+        W = self.pop
+        R = avg_win / avg_loss
+        
+        kelly = W - ((1 - W) / R)
+        return max(0, kelly * 0.5) # Half-Kelly
     
     # To String
     def __str__(self):
