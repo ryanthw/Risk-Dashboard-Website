@@ -14,8 +14,8 @@ A comprehensive, institutional-grade trading risk management platform built with
     - **Total Value:** Real-time mark-to-market valuation.
     - **Gross Exposure:** Sum of maximum possible losses across all positions.
     - **Net Liquidity:** Immediate cash value if all positions were closed.
-    - **Sortino Ratio:** Risk-adjusted return focusing on downside volatility.
     - **HHI (Herfindahl-Hirschman Index):** Concentration metric to ensure ticker diversification.
+    - **Open Trades:** Count of active positions currently being managed.
 - **Performance Multipliers:** Compare expected returns against S&P 500 benchmarks (Long-term and Short-term Alpha).
 - **Institutional Vitals:** Track Beta-Weighted Delta (portfolio bias), Daily Theta (time decay), and Leverage Ratios.
 

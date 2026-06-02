@@ -1,7 +1,6 @@
 from trade import Trade
 import database_sq as database 
 import api_interactions as api
-import yfinance as yf
 import numpy as np
 from datetime import datetime
 
@@ -99,37 +98,6 @@ def get_port_expected_return(user_id, p_name) -> float:
         w = pos_val / total_val_port
         expected_ret += w * e_r
     return expected_ret
-
-def get_port_downside_variance(user_id, p_name, target_return) -> float:
-    trades = database.get_trades(user_id, p_name)
-    total_val_port = database.get_portfolio_val(user_id, p_name)
-
-    if total_val_port <= 0.0:
-        return 0.0
-    
-    downside_var = 0.0
-
-    for pos in trades:
-        pos_val = pos.value
-        if pos_val <= 0 or pos.pnl_dist is None:
-            continue
-
-        w = pos_val / total_val_port
-        r = pos.pnl_dist
-
-        downside = np.minimum(0.0, r - target_return)
-        downside_var += (w ** 2) * np.mean(downside ** 2)
-
-    return downside_var
-
-def get_sortino_ratio(user_id, p_name) -> float:
-    er = get_port_expected_return(user_id, p_name)
-    downside_var = get_port_downside_variance(user_id, p_name, 0.0)
-
-    if downside_var <= 0:
-        return 0.0
-    
-    return er / np.sqrt(downside_var)
 
 def get_er_percent(user_id, ers, p_name) -> float:
     er = get_expected_returns(ers)

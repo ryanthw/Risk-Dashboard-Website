@@ -1,8 +1,8 @@
 from datetime import datetime
 import uuid
-from math import sqrt
 import api_interactions as api
 import numpy as np
+from scipy.stats import norm
 
 class Trade:
     def __init__(
@@ -38,7 +38,7 @@ class Trade:
     @property
     def dte(self):
         delta = self.expiration - datetime.now()
-        return delta.total_seconds() / 86400.0   # fractional days
+        return max(delta.total_seconds() / 86400.0, 0.0)   # fractional days
     
     @property
     def pos_len(self):
@@ -53,6 +53,95 @@ class Trade:
 
         # options — approx 100 multiplier
         return abs(self.premium) * 100 * self.qty
+
+    # ---------------------------
+    # Black-Scholes & Greeks
+    # ---------------------------
+    def _bs_price(self, S, K, T, sigma, r=0.04, option_type="call"):
+        if T <= 0:
+            return max(S - K, 0) if option_type == "call" else max(K - S, 0)
+        d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
+        if option_type == "call":
+            return S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+        else:
+            return K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+
+    def get_theoretical_value(self, S=None, T=None, iv=None, r=0.04):
+        """
+        Calculates theoretical value of the trade (total position) 
+        given price S, time T (in years), and volatility iv.
+        """
+        S = S if S is not None else self.underlying_price
+        T = T if T is not None else (self.dte / 365.0)
+        iv = iv if iv is not None else self.iv
+        mult = 100 * self.qty
+        t = self.trade_type.lower()
+
+        if t == "shares":
+            return S * self.qty
+
+        # Single Leg
+        if t in ["long_call", "short_call"]:
+            v = self._bs_price(S, self.strike, T, iv, r, "call") * mult
+            return v if t == "long_call" else -v
+        
+        if t in ["long_put", "short_put", "csp"]:
+            v = self._bs_price(S, self.strike, T, iv, r, "put") * mult
+            return v if t == "long_put" else -v
+
+        # Spreads
+        if t in ["pcs", "pds"]:
+            v1 = self._bs_price(S, self.strike, T, iv, r, "put") * mult
+            v2 = self._bs_price(S, self.strike_2, T, iv, r, "put") * mult
+            if t == "pcs": return -v1 + v2 # Short K1, Long K2
+            return v1 - v2 # Long K1, Short K2
+
+        if t in ["ccs", "cds"]:
+            v1 = self._bs_price(S, self.strike, T, iv, r, "call") * mult
+            v2 = self._bs_price(S, self.strike_2, T, iv, r, "call") * mult
+            if t == "ccs": return -v1 + v2 # Short K1, Long K2
+            return v1 - v2 # Long K1, Short K2
+
+        if t == "cc":
+            stock_val = S * self.qty
+            call_val = self._bs_price(S, self.strike, T, iv, r, "call") * mult
+            return stock_val - call_val
+
+        return 0.0
+
+    @property
+    def greeks(self):
+        """
+        Returns a dictionary of Delta, Theta, and Vega for the current position.
+        Calculated via finite difference for robustness across strategies.
+        """
+        if self.trade_type == "shares":
+            return {"delta": float(self.qty), "theta": 0.0, "vega": 0.0}
+
+        S = self.underlying_price
+        T = self.dte / 365.0
+        iv = self.iv
+        
+        # Base Value
+        v0 = self.get_theoretical_value(S, T, iv)
+        
+        # Delta (1% shift)
+        ds = S * 0.01
+        v_up_s = self.get_theoretical_value(S + ds, T, iv)
+        delta = (v_up_s - v0) / ds
+        
+        # Vega (1% vol shift)
+        dv = 0.01
+        v_up_v = self.get_theoretical_value(S, T, iv + dv)
+        vega = (v_up_v - v0) / (dv * 100) # Per 1% vol point
+        
+        # Theta (1 day shift)
+        dt = 1.0 / 365.0
+        v_next_day = self.get_theoretical_value(S, max(0, T - dt), iv)
+        theta = (v_next_day - v0) # Daily decay
+
+        return {"delta": delta, "theta": theta, "vega": vega}
 
     # -------------------------------------
     # Max Gain / Max Loss by strategy type
