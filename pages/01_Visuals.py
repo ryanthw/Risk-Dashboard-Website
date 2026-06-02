@@ -121,6 +121,94 @@ if trades:
     else:
         st.warning("No simulation data found. Try refreshing market data on the Dashboard.")
 
+def render_advanced_risk_analytics(trades):
+    st.divider()
+    col_left, col_right = st.columns(2)
+    
+    with col_left:
+        st.subheader("Portfolio Stress Test Matrix")
+        
+        price_shifts = np.linspace(-0.15, 0.15, 14) # -15% to +15%
+        vol_shifts = np.linspace(-0.10, 0.30, 10)   # -10% to +30%
+        
+        z_data = []
+        for v_shift in vol_shifts:
+            row = []
+            for p_shift in price_shifts:
+                total_pnl = 0.0
+                for t in trades:
+                    v0 = t.get_theoretical_value()
+                    v_shock = t.get_theoretical_value(
+                        S=t.underlying_price * (1 + p_shift),
+                        iv=t.iv + v_shift
+                    )
+                    total_pnl += (v_shock - v0)
+                row.append(total_pnl)
+            z_data.append(row)
+            
+        fig = px.imshow(
+            z_data,
+            x=[f"{p*100:+.1f}%" for p in price_shifts],
+            y=[f"{v*100:+.0f}%" for v in vol_shifts],
+            labels=dict(x="Price Shift", y="Vol Shift", color="P&L ($)"),
+            color_continuous_scale="RdYlGn",
+            aspect="auto",
+            template="plotly_dark"
+        )
+        st.plotly_chart(fig, width="stretch")
+        st.caption("Estimated P&L impact given simultaneous price and volatility shocks.")
+
+    with col_right:
+        st.subheader("Greek Surface (30-Day Decay)")
+        
+        days_out = np.arange(0, 31)
+        theta_decay = []
+        vega_decay = []
+        
+        for d in days_out:
+            t_theta = 0.0
+            t_vega = 0.0
+            for t in trades:
+                if t.trade_type == "shares": continue
+                
+                T_new = max(0, (t.dte - d) / 365.0)
+                # Recalculate greeks at future time T
+                v0 = t.get_theoretical_value(T=T_new)
+                
+                # Vega (1% vol shift)
+                dv = 0.01
+                v_up_v = t.get_theoretical_value(T=T_new, iv=t.iv + dv)
+                vega = (v_up_v - v0) / (dv * 100)
+                
+                # Theta (Daily)
+                dt = 1.0 / 365.0
+                v_next = t.get_theoretical_value(T=max(0, T_new - dt))
+                theta = (v_next - v0)
+                
+                t_theta += theta
+                t_vega += vega
+            
+            theta_decay.append(t_theta)
+            vega_decay.append(t_vega)
+            
+        df_decay = pd.DataFrame({
+            "Days from Now": days_out,
+            "Total Theta": theta_decay,
+            "Total Vega": vega_decay
+        })
+        
+        fig = px.line(
+            df_decay, x="Days from Now", y=["Total Theta", "Total Vega"],
+            title="Portfolio Greek Decay Over Time",
+            template="plotly_dark",
+            labels={"value": "Risk Exposure ($)", "variable": "Greek"}
+        )
+        st.plotly_chart(fig, width="stretch")
+        st.caption("How your portfolio's Theta income and Vega risk change as expirations approach.")
+
+if trades:
+    render_advanced_risk_analytics(trades)
+
 def render_compounding_chart(user_id, trades, port_val):
     st.subheader("10-Year Wealth Forecast")
     

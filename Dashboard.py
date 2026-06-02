@@ -228,7 +228,7 @@ if selected_p:
     st.header(f"Portfolio: {selected_p}")
 
     # 1. Top Level Metrics (The Big 5)
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5 = st.columns(5)
     port_val = db.get_portfolio_val(user_id, selected_p)
     trades = db.get_trades(user_id, selected_p)
     ers = [t.expected_profit for t in trades if t.trade_type != "shares"]
@@ -240,10 +240,8 @@ if selected_p:
     with col3:
         st.metric("Net Liquidity", f"{utils.get_net_liquidity(user_id, selected_p):.2f}")
     with col4:
-        st.metric("Sortino Ratio", f"{utils.get_sortino_ratio(user_id, selected_p):.3f}")
-    with col5:
         st.metric("HHI (Conc.)", f"{utils.get_hhi(user_id, selected_p):.2f}")
-    with col6:
+    with col5:
         st.metric("Open Trades:", f"{len(trades)}")
 
     st.divider()
